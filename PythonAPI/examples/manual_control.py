@@ -123,6 +123,8 @@ try:
     from pygame.locals import K_x
     from pygame.locals import K_MINUS
     from pygame.locals import K_EQUALS
+    from OpenGL.GL import *
+    from OpenGL.GLU import *
 except ImportError:
     raise RuntimeError('cannot import pygame, make sure pygame package is installed')
 
@@ -167,6 +169,7 @@ class World(object):
             sys.exit(1)
         self.hud = hud
         self.player = None
+        self.vrCamera = None
         self.collision_sensor = None
         self.lane_invasion_sensor = None
         self.gnss_sensor = None
@@ -188,9 +191,15 @@ class World(object):
         # Keep same camera config if the camera manager exists.
         cam_index = self.camera_manager.index if self.camera_manager is not None else 0
         cam_pos_index = self.camera_manager.transform_index if self.camera_manager is not None else 0
+
+        #searching the VR camera on the blueprint library
+        # vr_cam = self.world.get_blueprint_library().find('tools.gearvr_pawn')
+        
         # Get a random blueprint.
-        blueprint = random.choice(self.world.get_blueprint_library().filter(self._actor_filter))
-        blueprint.set_attribute('role_name', self.actor_role_name)
+        blueprint = self.world.get_blueprint_library().find('vehicle.tesla.model3')
+        blueprint.set_attribute('role_name', 'ego')
+
+		#blueprint.set_attribute('role_name', self.actor_role_name)
         if blueprint.has_attribute('color'):
             color = random.choice(blueprint.get_attribute('color').recommended_values)
             blueprint.set_attribute('color', color)
@@ -205,22 +214,32 @@ class World(object):
             self.player_max_speed_fast = float(blueprint.get_attribute('speed').recommended_values[2])
         else:
             print("No recommended values for 'speed' attribute")
+
+
+        # Trying a spawn in a specific location
+        # transformTest = carla.Transform(carla.Location(x=52, y=-6, z=2), carla.Rotation(yaw=180))
+        # self.player = self.world.try_spawn_actor(blueprint, transformTest)
+
+        # self.vrCamera = self.world.try_spawn_actor(vr_cam, transformTest)
+
         # Spawn the player.
         if self.player is not None:
-            spawn_point = self.player.get_transform()
-            spawn_point.location.z += 2.0
-            spawn_point.rotation.roll = 0.0
-            spawn_point.rotation.pitch = 0.0
-            self.destroy()
-            self.player = self.world.try_spawn_actor(blueprint, spawn_point)
+               spawn_point = self.player.get_transform()
+               spawn_point.location.z += 2.0
+               spawn_point.rotation.roll = 0.0
+               spawn_point.rotation.pitch = 0.0
+               self.destroy()
+               self.player = self.world.try_spawn_actor(blueprint, spawn_point)
         while self.player is None:
-            if not self.map.get_spawn_points():
-                print('There are no spawn points available in your map/town.')
-                print('Please add some Vehicle Spawn Point to your UE4 scene.')
-                sys.exit(1)
-            spawn_points = self.map.get_spawn_points()
-            spawn_point = random.choice(spawn_points) if spawn_points else carla.Transform()
-            self.player = self.world.try_spawn_actor(blueprint, spawn_point)
+               if not self.map.get_spawn_points():
+                   print('There are no spawn points available in your map/town.')
+                   print('Please add some Vehicle Spawn Point to your UE4 scene.')
+                   sys.exit(1)
+               spawn_points = self.map.get_spawn_points()
+               spawn_point = random.choice(spawn_points) if spawn_points else carla.Transform()
+               # spawn_point = spawn_points.VehicleSpawnPoint79 if spawn_points else carla.Transform()
+               self.player = self.world.try_spawn_actor(blueprint, spawn_point)
+
         # Set up the sensors.
         self.collision_sensor = CollisionSensor(self.player, self.hud)
         self.lane_invasion_sensor = LaneInvasionSensor(self.player, self.hud)
@@ -231,7 +250,7 @@ class World(object):
         self.camera_manager.set_sensor(cam_index, notify=False)
         actor_type = get_actor_display_name(self.player)
         self.hud.notification(actor_type)
-
+        
     def next_weather(self, reverse=False):
         self._weather_index += -1 if reverse else 1
         self._weather_index %= len(self._weather_presets)
@@ -349,7 +368,7 @@ class KeyboardControl(object):
                     current_index = world.camera_manager.index
                     world.destroy_sensors()
                     # disable autopilot
-                    self._autopilot_enabled = False
+                    self._autopilot_enabled = True
                     world.player.set_autopilot(self._autopilot_enabled)
                     world.hud.notification("Replaying file 'manual_recording.rec'")
                     # replayer
@@ -892,11 +911,9 @@ class CameraManager(object):
         bound_y = 0.5 + self._parent.bounding_box.extent.y
         Attachment = carla.AttachmentType
         self._camera_transforms = [
-            (carla.Transform(carla.Location(x=-5.5, z=2.5), carla.Rotation(pitch=8.0)), Attachment.SpringArm),
-            (carla.Transform(carla.Location(x=1.6, z=1.7)), Attachment.Rigid),
-            (carla.Transform(carla.Location(x=5.5, y=1.5, z=1.5)), Attachment.SpringArm),
-            (carla.Transform(carla.Location(x=-8.0, z=6.0), carla.Rotation(pitch=6.0)), Attachment.SpringArm),
-            (carla.Transform(carla.Location(x=-1, y=-bound_y, z=0.5)), Attachment.Rigid)]
+            (carla.Transform(
+                carla.Location(x=0.25, y=-0.45, z=1.2), carla.Rotation(pitch=-5)), Attachment.Rigid),
+            (carla.Transform(carla.Location(x=-8.0, z=6.0), carla.Rotation(pitch=6.0)), Attachment.SpringArm)]
         self.transform_index = 1
         self.sensors = [
             ['sensor.camera.rgb', cc.Raw, 'Camera RGB', {}],
