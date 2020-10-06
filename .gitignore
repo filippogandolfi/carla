@@ -46,3 +46,5 @@ _out*
 _site
 core
 profiler.csv
+LibCarla/source/carla/client/CarlaUE4/Binaries/Win64/CarlaUE4.exe
+LibCarla/source/carla/client/CarlaUE4/Binaries/Win64/CarlaUE4.pdb
