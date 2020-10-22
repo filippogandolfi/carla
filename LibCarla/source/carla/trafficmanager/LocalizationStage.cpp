@@ -234,23 +234,16 @@ void LocalizationStage::ExtendAndFindSafeSpace(const ActorId actor_id,
 
     // Extend buffer if safe point not found.
     if (!safe_point_found) {
-      bool abort = false;
-
-      while (!past_junction && !abort) {
-        NodeList next_waypoints = current_waypoint->GetNextWaypoint();
-        if (!next_waypoints.empty()) {
-          current_waypoint = next_waypoints.front();
-          PushWaypoint(actor_id, track_traffic, waypoint_buffer, current_waypoint);
-          if (!current_waypoint->CheckJunction()) {
-            past_junction = true;
-            junction_end_point = current_waypoint;
-          }
-        } else {
-          abort = true;
+      while (!past_junction) {
+        current_waypoint = current_waypoint->GetNextWaypoint().front();
+        PushWaypoint(actor_id, track_traffic, waypoint_buffer, current_waypoint);
+        if (!current_waypoint->CheckJunction()) {
+          past_junction = true;
+          junction_end_point = current_waypoint;
         }
       }
 
-      while (!safe_point_found && !abort) {
+      while (!safe_point_found) {
         std::vector<SimpleWaypointPtr> next_waypoints = current_waypoint->GetNextWaypoint();
         if ((junction_end_point->DistanceSquared(current_waypoint) > safe_distance_squared)
             || next_waypoints.size() > 1
@@ -259,20 +252,13 @@ void LocalizationStage::ExtendAndFindSafeSpace(const ActorId actor_id,
           safe_point_found = true;
           safe_point_after_junction = current_waypoint;
         } else {
-          if (!next_waypoints.empty()) {
-            current_waypoint = next_waypoints.front();
-            PushWaypoint(actor_id, track_traffic, waypoint_buffer, current_waypoint);
-          } else {
-            abort = true;
-          }
+          current_waypoint = next_waypoints.front();
+          PushWaypoint(actor_id, track_traffic, waypoint_buffer, current_waypoint);
         }
       }
     }
 
-    if (junction_end_point != nullptr &&
-        safe_point_after_junction != nullptr &&
-        junction_begin_point->DistanceSquared(junction_end_point) < SQUARE(MIN_JUNCTION_LENGTH)) {
-
+    if (junction_begin_point->DistanceSquared(junction_end_point) < SQUARE(MIN_JUNCTION_LENGTH)) {
       junction_end_point = nullptr;
       safe_point_after_junction = nullptr;
     }

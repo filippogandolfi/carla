@@ -93,12 +93,28 @@
 			"Enabled": false
 		},
 		{
-			"Name": "SteamVR",
-			"Enabled": false
-		},
-		{
 			"Name": "RenderDocPlugin",
 			"Enabled": true
+		},
+		{
+			"Name": "LeapMotion",
+			"Enabled": true
+		},
+		{
+			"Name": "RawInput",
+			"Enabled": true
+		},
+		{
+			"Name": "PythonScriptPlugin",
+			"Enabled": true
+		},
+		{
+			"Name": "OpenXR",
+			"Enabled": true,
+			"SupportedTargetPlatforms": [
+				"Win32",
+				"Win64"
+			]
 		}
 	]
 }

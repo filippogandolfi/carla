@@ -22,7 +22,6 @@ Use ARROWS or WASD keys for control.
     P            : toggle autopilot
     M            : toggle manual transmission
     ,/.          : gear up/down
-    CTRL + W     : toggle constant velocity mode at 60 km/h
 
     L            : toggle next light type
     SHIFT + L    : toggle high beam
@@ -124,6 +123,8 @@ try:
     from pygame.locals import K_x
     from pygame.locals import K_MINUS
     from pygame.locals import K_EQUALS
+    from OpenGL.GL import *
+    from OpenGL.GLU import *
 except ImportError:
     raise RuntimeError('cannot import pygame, make sure pygame package is installed')
 
@@ -168,6 +169,7 @@ class World(object):
             sys.exit(1)
         self.hud = hud
         self.player = None
+        self.vrCamera = None
         self.collision_sensor = None
         self.lane_invasion_sensor = None
         self.gnss_sensor = None
@@ -182,7 +184,6 @@ class World(object):
         self.world.on_tick(hud.on_world_tick)
         self.recording_enabled = False
         self.recording_start = 0
-        self.constant_velocity_enabled = False
 
     def restart(self):
         self.player_max_speed = 1.589
@@ -190,9 +191,15 @@ class World(object):
         # Keep same camera config if the camera manager exists.
         cam_index = self.camera_manager.index if self.camera_manager is not None else 0
         cam_pos_index = self.camera_manager.transform_index if self.camera_manager is not None else 0
+
+        #searching the VR camera on the blueprint library
+        # vr_cam = self.world.get_blueprint_library().find('tools.gearvr_pawn')
+        
         # Get a random blueprint.
-        blueprint = random.choice(self.world.get_blueprint_library().filter(self._actor_filter))
-        blueprint.set_attribute('role_name', self.actor_role_name)
+        blueprint = self.world.get_blueprint_library().find('vehicle.tesla.model3')
+        blueprint.set_attribute('role_name', 'ego')
+
+		#blueprint.set_attribute('role_name', self.actor_role_name)
         if blueprint.has_attribute('color'):
             color = random.choice(blueprint.get_attribute('color').recommended_values)
             blueprint.set_attribute('color', color)
@@ -207,22 +214,32 @@ class World(object):
             self.player_max_speed_fast = float(blueprint.get_attribute('speed').recommended_values[2])
         else:
             print("No recommended values for 'speed' attribute")
+
+
+        # Trying a spawn in a specific location
+        # transformTest = carla.Transform(carla.Location(x=52, y=-6, z=2), carla.Rotation(yaw=180))
+        # self.player = self.world.try_spawn_actor(blueprint, transformTest)
+
+        # self.vrCamera = self.world.try_spawn_actor(vr_cam, transformTest)
+
         # Spawn the player.
         if self.player is not None:
-            spawn_point = self.player.get_transform()
-            spawn_point.location.z += 2.0
-            spawn_point.rotation.roll = 0.0
-            spawn_point.rotation.pitch = 0.0
-            self.destroy()
-            self.player = self.world.try_spawn_actor(blueprint, spawn_point)
+               spawn_point = self.player.get_transform()
+               spawn_point.location.z += 2.0
+               spawn_point.rotation.roll = 0.0
+               spawn_point.rotation.pitch = 0.0
+               self.destroy()
+               self.player = self.world.try_spawn_actor(blueprint, spawn_point)
         while self.player is None:
-            if not self.map.get_spawn_points():
-                print('There are no spawn points available in your map/town.')
-                print('Please add some Vehicle Spawn Point to your UE4 scene.')
-                sys.exit(1)
-            spawn_points = self.map.get_spawn_points()
-            spawn_point = random.choice(spawn_points) if spawn_points else carla.Transform()
-            self.player = self.world.try_spawn_actor(blueprint, spawn_point)
+               if not self.map.get_spawn_points():
+                   print('There are no spawn points available in your map/town.')
+                   print('Please add some Vehicle Spawn Point to your UE4 scene.')
+                   sys.exit(1)
+               spawn_points = self.map.get_spawn_points()
+               spawn_point = random.choice(spawn_points) if spawn_points else carla.Transform()
+               # spawn_point = spawn_points.VehicleSpawnPoint79 if spawn_points else carla.Transform()
+               self.player = self.world.try_spawn_actor(blueprint, spawn_point)
+
         # Set up the sensors.
         self.collision_sensor = CollisionSensor(self.player, self.hud)
         self.lane_invasion_sensor = LaneInvasionSensor(self.player, self.hud)
@@ -233,7 +250,7 @@ class World(object):
         self.camera_manager.set_sensor(cam_index, notify=False)
         actor_type = get_actor_display_name(self.player)
         self.hud.notification(actor_type)
-
+        
     def next_weather(self, reverse=False):
         self._weather_index += -1 if reverse else 1
         self._weather_index %= len(self._weather_presets)
@@ -263,18 +280,16 @@ class World(object):
     def destroy(self):
         if self.radar_sensor is not None:
             self.toggle_radar()
-        sensors = [
+        actors = [
             self.camera_manager.sensor,
             self.collision_sensor.sensor,
             self.lane_invasion_sensor.sensor,
             self.gnss_sensor.sensor,
-            self.imu_sensor.sensor]
-        for sensor in sensors:
-            if sensor is not None:
-                sensor.stop()
-                sensor.destroy()
-        if self.player is not None:
-            self.player.destroy()
+            self.imu_sensor.sensor,
+            self.player]
+        for actor in actors:
+            if actor is not None:
+                actor.destroy()
 
 
 # ==============================================================================
@@ -332,15 +347,6 @@ class KeyboardControl(object):
                     world.camera_manager.next_sensor()
                 elif event.key == K_n:
                     world.camera_manager.next_sensor()
-                elif event.key == K_w and (pygame.key.get_mods() & KMOD_CTRL):
-                    if world.constant_velocity_enabled:
-                        world.player.disable_constant_velocity()
-                        world.constant_velocity_enabled = False
-                        world.hud.notification("Disabled Constant Velocity Mode")
-                    else:
-                        world.player.enable_constant_velocity(carla.Vector3D(17, 0, 0))
-                        world.constant_velocity_enabled = True
-                        world.hud.notification("Enabled Constant Velocity Mode at 60 km/h")
                 elif event.key > K_0 and event.key <= K_9:
                     world.camera_manager.set_sensor(event.key - 1 - K_0)
                 elif event.key == K_r and not (pygame.key.get_mods() & KMOD_CTRL):
@@ -362,7 +368,7 @@ class KeyboardControl(object):
                     current_index = world.camera_manager.index
                     world.destroy_sensors()
                     # disable autopilot
-                    self._autopilot_enabled = False
+                    self._autopilot_enabled = True
                     world.player.set_autopilot(self._autopilot_enabled)
                     world.hud.notification("Replaying file 'manual_recording.rec'")
                     # replayer
@@ -433,11 +439,11 @@ class KeyboardControl(object):
                 if self._control.brake:
                     current_lights |= carla.VehicleLightState.Brake
                 else: # Remove the Brake flag
-                    current_lights &= ~carla.VehicleLightState.Brake
+                    current_lights &= carla.VehicleLightState.All ^ carla.VehicleLightState.Brake
                 if self._control.reverse:
                     current_lights |= carla.VehicleLightState.Reverse
                 else: # Remove the Reverse flag
-                    current_lights &= ~carla.VehicleLightState.Reverse
+                    current_lights &= carla.VehicleLightState.All ^ carla.VehicleLightState.Reverse
                 if current_lights != self._lights: # Change the light state only if necessary
                     self._lights = current_lights
                     world.player.set_light_state(carla.VehicleLightState(self._lights))
@@ -580,7 +586,7 @@ class HUD(object):
             self._info_text += ['Nearby vehicles:']
             distance = lambda l: math.sqrt((l.x - t.location.x)**2 + (l.y - t.location.y)**2 + (l.z - t.location.z)**2)
             vehicles = [(distance(x.get_location()), x) for x in vehicles if x.id != world.player.id]
-            for d, vehicle in sorted(vehicles, key=lambda vehicles: vehicles[0]):
+            for d, vehicle in sorted(vehicles):
                 if d > 200.0:
                     break
                 vehicle_type = get_actor_display_name(vehicle, truncate=22)
@@ -905,11 +911,9 @@ class CameraManager(object):
         bound_y = 0.5 + self._parent.bounding_box.extent.y
         Attachment = carla.AttachmentType
         self._camera_transforms = [
-            (carla.Transform(carla.Location(x=-5.5, z=2.5), carla.Rotation(pitch=8.0)), Attachment.SpringArm),
-            (carla.Transform(carla.Location(x=1.6, z=1.7)), Attachment.Rigid),
-            (carla.Transform(carla.Location(x=5.5, y=1.5, z=1.5)), Attachment.SpringArm),
-            (carla.Transform(carla.Location(x=-8.0, z=6.0), carla.Rotation(pitch=6.0)), Attachment.SpringArm),
-            (carla.Transform(carla.Location(x=-1, y=-bound_y, z=0.5)), Attachment.Rigid)]
+            (carla.Transform(
+                carla.Location(x=0.25, y=-0.45, z=1.2), carla.Rotation(pitch=-5)), Attachment.Rigid),
+            (carla.Transform(carla.Location(x=-8.0, z=6.0), carla.Rotation(pitch=6.0)), Attachment.SpringArm)]
         self.transform_index = 1
         self.sensors = [
             ['sensor.camera.rgb', cc.Raw, 'Camera RGB', {}],
@@ -919,7 +923,7 @@ class CameraManager(object):
             ['sensor.camera.semantic_segmentation', cc.Raw, 'Camera Semantic Segmentation (Raw)', {}],
             ['sensor.camera.semantic_segmentation', cc.CityScapesPalette,
                 'Camera Semantic Segmentation (CityScapes Palette)', {}],
-            ['sensor.lidar.ray_cast', None, 'Lidar (Ray-Cast)', {'range': '50'}],
+            ['sensor.lidar.ray_cast', None, 'Lidar (Ray-Cast)', {}],
             ['sensor.camera.dvs', cc.Raw, 'Dynamic Vision Sensor', {}],
             ['sensor.camera.rgb', cc.Raw, 'Camera RGB Distorted',
                 {'lens_circle_multiplier': '3.0',
@@ -938,14 +942,7 @@ class CameraManager(object):
                 for attr_name, attr_value in item[3].items():
                     bp.set_attribute(attr_name, attr_value)
             elif item[0].startswith('sensor.lidar'):
-                self.lidar_range = 50
-
-                for attr_name, attr_value in item[3].items():
-                    bp.set_attribute(attr_name, attr_value)
-                    if attr_name == 'range':
-                        self.lidar_range = float(attr_value)
-
-
+                bp.set_attribute('range', '50')
             item.append(bp)
         self.index = None
 
@@ -992,9 +989,9 @@ class CameraManager(object):
             return
         if self.sensors[self.index][0].startswith('sensor.lidar'):
             points = np.frombuffer(image.raw_data, dtype=np.dtype('f4'))
-            points = np.reshape(points, (int(points.shape[0] / 4), 4))
+            points = np.reshape(points, (int(points.shape[0] / 3), 3))
             lidar_data = np.array(points[:, :2])
-            lidar_data *= min(self.hud.dim) / (2.0 * self.lidar_range)
+            lidar_data *= min(self.hud.dim) / 100.0
             lidar_data += (0.5 * self.hud.dim[0], 0.5 * self.hud.dim[1])
             lidar_data = np.fabs(lidar_data)  # pylint: disable=E1111
             lidar_data = lidar_data.astype(np.int32)

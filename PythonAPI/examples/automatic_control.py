@@ -124,11 +124,13 @@ class World(object):
             random.seed(args.seed)
 
         # Get a random blueprint.
-        blueprint = random.choice(self.world.get_blueprint_library().filter(self._actor_filter))
+        blueprint = self.world.get_blueprint_library().find('vehicle.tesla.model3')
         blueprint.set_attribute('role_name', 'hero')
+        print('\nVehicle role_name is set')
         if blueprint.has_attribute('color'):
             color = random.choice(blueprint.get_attribute('color').recommended_values)
             blueprint.set_attribute('color', color)
+        print('\nVehicle color is set')
         # Spawn the player.
         print("Spawning the player")
         if self.player is not None:
@@ -148,10 +150,15 @@ class World(object):
             spawn_point = random.choice(spawn_points) if spawn_points else carla.Transform()
             self.player = self.world.try_spawn_actor(blueprint, spawn_point)
         # Set up the sensors.
+        print("\nSpawning sensors:")
         self.collision_sensor = CollisionSensor(self.player, self.hud)
+        print(" Collision,")
         self.lane_invasion_sensor = LaneInvasionSensor(self.player, self.hud)
+        print(" Lane Invasion,")
         self.gnss_sensor = GnssSensor(self.player)
+        print(" GNSS,")
         self.camera_manager = CameraManager(self.player, self.hud, self._gamma)
+        print(" Camera.\n")
         self.camera_manager.transform_index = cam_pos_id
         self.camera_manager.set_sensor(cam_index, notify=False)
         actor_type = get_actor_display_name(self.player)
@@ -545,7 +552,7 @@ class GnssSensor(object):
 
 
 class CameraManager(object):
-    """ Class for camera management"""
+    """Class for camera management"""
 
     def __init__(self, parent_actor, hud, gamma_correction):
         """Constructor method"""
@@ -558,15 +565,7 @@ class CameraManager(object):
         attachment = carla.AttachmentType
         self._camera_transforms = [
             (carla.Transform(
-                carla.Location(x=-5.5, z=2.5), carla.Rotation(pitch=8.0)), attachment.SpringArm),
-            (carla.Transform(
-                carla.Location(x=1.6, z=1.7)), attachment.Rigid),
-            (carla.Transform(
-                carla.Location(x=5.5, y=1.5, z=1.5)), attachment.SpringArm),
-            (carla.Transform(
-                carla.Location(x=-8.0, z=6.0), carla.Rotation(pitch=6.0)), attachment.SpringArm),
-            (carla.Transform(
-                carla.Location(x=-1, y=-bound_y, z=0.5)), attachment.Rigid)]
+                carla.Location(x=0.3, y=-0.45, z=1.2), carla.Rotation(pitch=-15)), attachment.Rigid)]
         self.transform_index = 1
         self.sensors = [
             ['sensor.camera.rgb', cc.Raw, 'Camera RGB'],
@@ -640,7 +639,7 @@ class CameraManager(object):
             return
         if self.sensors[self.index][0].startswith('sensor.lidar'):
             points = np.frombuffer(image.raw_data, dtype=np.dtype('f4'))
-            points = np.reshape(points, (int(points.shape[0] / 4), 4))
+            points = np.reshape(points, (int(points.shape[0] / 3), 3))
             lidar_data = np.array(points[:, :2])
             lidar_data *= min(self.hud.dim) / 100.0
             lidar_data += (0.5 * self.hud.dim[0], 0.5 * self.hud.dim[1])
@@ -792,8 +791,8 @@ def main():
     argparser.add_argument(
         '--res',
         metavar='WIDTHxHEIGHT',
-        default='1280x720',
-        help='Window resolution (default: 1280x720)')
+        default='2160x1200',
+        help='Window resolution (default: 2160x1200)')
     argparser.add_argument(
         '--filter',
         metavar='PATTERN',
